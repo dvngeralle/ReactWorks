@@ -1,55 +1,68 @@
-import { useState, useEffect, useCallback } from "react"
-import DeckSelector from "./components/DeckSelector"
-import CardForm from "./components/CardForm"
-import CardsTable from "./components/CardsTable"
-import StudySection from "./components/StudySection"
-import "./App.css"
+import { useState, useEffect, useCallback } from 'react'
+import DeckSelector from './components/DeckSelector'
+import CardForm from './components/CardForm'
+import CardsTable from './components/CardsTable'
+import StudySection from './components/StudySection'
+import './App.css'
 
-const STORAGE_KEY = "flashcards-decks-v2"
+const STORAGE_KEY = 'flashcards-decks-v2'
 
 const shuffleArray = (arr) =>
   [...arr]
-    .map((a) => ({ sort: Math.random(), value: a }))
+    .map(a => ({ sort: Math.random(), value: a }))
     .sort((a, b) => a.sort - b.sort)
-    .map((a) => a.value)
+    .map(a => a.value)
 
 export default function App() {
   const [decks, setDecks] = useState(null)
-  const [currentDeckName, setCurrentDeckName] = useState("Основная")
+  const [currentDeckName, setCurrentDeckName] = useState('Основная')
   const [editingIndex, setEditingIndex] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY)
+
     if (saved) {
-      setDecks(JSON.parse(saved))
-      return
+      try {
+        const parsed = JSON.parse(saved)
+        const hasCards = Object.values(parsed).some(deck => deck.length > 0)
+        if (hasCards) {
+          setDecks(parsed)
+          setLoading(false)
+          return
+        }
+      } catch {
+        localStorage.removeItem(STORAGE_KEY)
+      }
     }
 
-    setLoading(true)
-    fetch("https://opentdb.com/api.php?amount=50&type=multiple")
-      .then((res) => res.json())
-      .then((data) => {
+    // Нет валидных данных — идём в API
+    localStorage.removeItem(STORAGE_KEY) // чистим на всякий случай
+    fetch('https://opentdb.com/api.php?amount=50&type=multiple')
+      .then(res => res.json())
+      .then(data => {
+        if (!data.results || data.results.length === 0) {
+          throw new Error('Пустой ответ от API')
+        }
         const cards = data.results.map((item, i) => ({
           id: Date.now() + i,
           front: item.question,
           back: item.correct_answer,
           isLearned: false,
         }))
-        const initialDecks = { Основная: cards }
-        setDecks(initialDecks)
+        const initialDecks = { 'Основная': cards }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(initialDecks))
+        setDecks(initialDecks)
       })
       .catch(() => {
-        setError(
-          "Не удалось загрузить карточки с сервера. Попробуйте обновить страницу.",
-        )
-        setDecks({ Основная: [] })
+        setError('Не удалось загрузить карточки с сервера. Попробуйте обновить страницу.')
+        setDecks({ 'Основная': [] })
       })
       .finally(() => setLoading(false))
   }, [])
 
+  // Сохранение только когда decks уже загружены и не null
   useEffect(() => {
     if (!decks) return
     const interval = setInterval(() => {
@@ -68,36 +81,30 @@ export default function App() {
   }, [])
 
   const addDeck = useCallback((name) => {
-    setDecks((prev) => ({ ...prev, [name]: [] }))
+    setDecks(prev => ({ ...prev, [name]: [] }))
     setCurrentDeckName(name)
   }, [])
 
-  const addOrUpdateCard = useCallback(
-    (front, back) => {
-      setDecks((prev) => {
-        const deck = [...(prev[currentDeckName] || [])]
-        if (editingIndex !== null) {
-          deck[editingIndex] = { ...deck[editingIndex], front, back }
-        } else {
-          deck.push({ id: Date.now(), front, back, isLearned: false })
-        }
-        return { ...prev, [currentDeckName]: deck }
-      })
-      setEditingIndex(null)
-    },
-    [currentDeckName, editingIndex],
-  )
+  const addOrUpdateCard = useCallback((front, back) => {
+    setDecks(prev => {
+      const deck = [...(prev[currentDeckName] || [])]
+      if (editingIndex !== null) {
+        deck[editingIndex] = { ...deck[editingIndex], front, back }
+      } else {
+        deck.push({ id: Date.now(), front, back, isLearned: false })
+      }
+      return { ...prev, [currentDeckName]: deck }
+    })
+    setEditingIndex(null)
+  }, [currentDeckName, editingIndex])
 
-  const deleteCard = useCallback(
-    (index) => {
-      setDecks((prev) => {
-        const deck = [...prev[currentDeckName]]
-        deck.splice(index, 1)
-        return { ...prev, [currentDeckName]: deck }
-      })
-    },
-    [currentDeckName],
-  )
+  const deleteCard = useCallback((index) => {
+    setDecks(prev => {
+      const deck = [...prev[currentDeckName]]
+      deck.splice(index, 1)
+      return { ...prev, [currentDeckName]: deck }
+    })
+  }, [currentDeckName])
 
   const startEdit = useCallback((index) => {
     setEditingIndex(index)
@@ -107,21 +114,18 @@ export default function App() {
     setEditingIndex(null)
   }, [])
 
-  const toggleLearned = useCallback(
-    (index) => {
-      setDecks((prev) => {
-        const deck = [...prev[currentDeckName]]
-        deck[index] = { ...deck[index], isLearned: !deck[index].isLearned }
-        return { ...prev, [currentDeckName]: deck }
-      })
-    },
-    [currentDeckName],
-  )
+  const toggleLearned = useCallback((index) => {
+    setDecks(prev => {
+      const deck = [...prev[currentDeckName]]
+      deck[index] = { ...deck[index], isLearned: !deck[index].isLearned }
+      return { ...prev, [currentDeckName]: deck }
+    })
+  }, [currentDeckName])
 
   const shuffleDeck = useCallback(() => {
-    setDecks((prev) => ({
+    setDecks(prev => ({
       ...prev,
-      [currentDeckName]: shuffleArray(prev[currentDeckName] || []),
+      [currentDeckName]: shuffleArray(prev[currentDeckName] || [])
     }))
   }, [currentDeckName])
 
@@ -148,9 +152,7 @@ export default function App() {
       />
       <div className="table-header">
         <h2>Колода</h2>
-        <button className="btn-secondary" onClick={shuffleDeck}>
-          Перемешать колоду
-        </button>
+        <button className="btn-secondary" onClick={shuffleDeck}>Перемешать колоду</button>
       </div>
       <CardsTable
         deck={deck}
